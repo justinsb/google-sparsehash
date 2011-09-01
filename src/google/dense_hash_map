@@ -106,19 +106,25 @@
 #include HASH_FUN_H                 // for hash<>
 _START_GOOGLE_NAMESPACE_
 
+// Apparently select1st is not stl-standard, so we define our own
+template <class Key, class T>
+ struct SelectFirstFromPair {
+   typedef const Key& result_type;
+   const Key& operator()(const std::pair<const Key, T>& p) const {
+     return p.first;
+   }
+ };
+
 template <class Key, class T,
           class HashFcn = SPARSEHASH_HASH<Key>,   // defined in sparseconfig.h
           class EqualKey = std::equal_to<Key>,
-          class Alloc = libc_allocator_with_realloc<std::pair<const Key, T> > >
+          class Alloc = libc_allocator_with_realloc<std::pair<const Key, T> >,
+          class Strategy = LegacyStrategy< std::pair<const Key, T>, Key, SelectFirstFromPair<Key,T>, EqualKey > >
 class dense_hash_map {
  private:
-  // Apparently select1st is not stl-standard, so we define our own
-  struct SelectKey {
-    typedef const Key& result_type;
-    const Key& operator()(const std::pair<const Key, T>& p) const {
-      return p.first;
-    }
-  };
+	// Apparently select1st is not stl-standard, so we define our own
+	typedef SelectFirstFromPair<Key,T> SelectKey;
+
   struct SetKey {
     void operator()(std::pair<const Key, T>* value, const Key& new_key) const {
       *const_cast<Key*>(&value->first) = new_key;
@@ -137,7 +143,7 @@ class dense_hash_map {
 
   // The actual data
   typedef dense_hashtable<std::pair<const Key, T>, Key, HashFcn, SelectKey,
-                          SetKey, EqualKey, Alloc> ht;
+                          SetKey, EqualKey, Alloc, Strategy> ht;
   ht rep;
 
  public:
@@ -335,9 +341,9 @@ class dense_hash_map {
 };
 
 // We need a global swap as well
-template <class Key, class T, class HashFcn, class EqualKey, class Alloc>
-inline void swap(dense_hash_map<Key, T, HashFcn, EqualKey, Alloc>& hm1,
-                 dense_hash_map<Key, T, HashFcn, EqualKey, Alloc>& hm2) {
+template <class Key, class T, class HashFcn, class EqualKey, class Alloc, class Strategy>
+inline void swap(dense_hash_map<Key, T, HashFcn, EqualKey, Alloc, Strategy>& hm1,
+                 dense_hash_map<Key, T, HashFcn, EqualKey, Alloc, Strategy>& hm2) {
   hm1.swap(hm2);
 }
 
