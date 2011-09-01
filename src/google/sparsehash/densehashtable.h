@@ -345,75 +345,115 @@ public:
     	    return empty_;
      }
 
+     // Annoyingly, we can't copy values around, because they might have
+     // const components (they're probably pair<const X, Y>).  We use
+     // explicit destructor invocation and placement new to get around
+     // this.  Arg.
+     void set_value(entry_type* dst, const entry_type& src) {
+       dst->~entry_type();   // delete the old value, if any
+       new(dst) entry_type(src);
+     }
+
+     void destroy_bucket(entry_type * dst) {
+    	 dst->~entry_type();
+     }
+
 private:
      entry_type empty_;    // which key marks unused entries
      bool have_empty_;
-
- // Annoyingly, we can't copy values around, because they might have
- // const components (they're probably pair<const X, Y>).  We use
- // explicit destructor invocation and placement new to get around
- // this.  Arg.
- void set_value(entry_type* dst, const entry_type& src) {
-   dst->~entry_type();   // delete the old value, if any
-   new(dst) entry_type(src);
- }
-
 };
+
+template <class T, T SetValue>
+void set_if_not_zeroes(const T& dest) {
+  const_cast<T&>(dest) = SetValue;
+}
+
+template <>
+void set_if_not_zeroes<int, 0>(const int& dest) {}
 
 template <class Entry, class Key, class ExtractKey, class EqualKey, Key EmptyKeyValue>
 class ConstantStrategy : public EqualKey, public ExtractKey {
 public:
- typedef Key key_type;
- typedef Entry entry_type;
- typedef typename entry_type::second_type data_type;
+  typedef Key key_type;
+  typedef Entry entry_type;
+  typedef typename entry_type::second_type data_type;
 
 private:
- template <class A>
-   // We want to return the exact same type as ExtractKey: Key or const Key&
-    typename ExtractKey::result_type get_key(A v) const {
-      return ExtractKey::operator()(v);
-    }
+  template <class A>
+  // We want to return the exact same type as ExtractKey: Key or const Key&
+  typename ExtractKey::result_type get_key(A v) const {
+    return ExtractKey::operator()(v);
+  }
 
 public:
-    explicit ConstantStrategy(const EqualKey& eql = EqualKey(),
-                               const ExtractKey& ext = ExtractKey())
-          : EqualKey(eql),
-            ExtractKey(ext) {
-      }
+  explicit ConstantStrategy(const EqualKey& eql = EqualKey(),
+      const ExtractKey& ext = ExtractKey())
+  : EqualKey(eql),
+  ExtractKey(ext) {
+  }
 
-    ConstantStrategy(const ConstantStrategy& v)
-        : EqualKey(v), ExtractKey(v) { }
+  ConstantStrategy(const ConstantStrategy& v)
+  : EqualKey(v), ExtractKey(v) {}
 
-	void set_empty_key(const entry_type& val) {
-		throw std::invalid_argument("No need to call set_empty_key");
-	}
+  void set_empty_key(const entry_type& val) {
+    throw std::invalid_argument("No need to call set_empty_key");
+  }
 
-	bool is_empty(const entry_type& entry) const {
-		return EqualKey::operator()(get_key(entry), EmptyKeyValue);
-	}
+  bool is_empty(const entry_type& entry) const {
+    return EqualKey::operator()(get_key(entry), EmptyKeyValue);
+  }
 
-	bool is_empty_key(const key_type& key) const {
-		return EqualKey::operator()(key, EmptyKeyValue);
-	}
+  bool is_empty_key(const key_type& key) const {
+    return EqualKey::operator()(key, EmptyKeyValue);
+  }
 
-	  void fill_range_with_empty(entry_type * table_start, entry_type * table_end) {
-//		  char * start = (char*) table_start;
-//		  char * end = (char*) table_end;
-//
-//		  memset(start, 0, end - start);
-	    std::uninitialized_fill(table_start, table_end, entry_type(EmptyKeyValue, data_type()));
-	  }
+  // Annoyingly, we can't copy values around, because they might have
+  // const components (they're probably pair<const X, Y>).  We use
+  // explicit destructor invocation and placement new to get around
+  // this.  Arg.
+  void set_value(entry_type * dst, const entry_type& src) {
+    if (dst->first != EmptyKeyValue) {
+      dst->~entry_type(); // delete the old value, if any
+    }
+    new(dst) entry_type(src);
+  }
 
-     void swap(ConstantStrategy& b) {
-     }
+  void destroy_bucket(entry_type * dst) {
+    if (dst->first != EmptyKeyValue) {
+      dst->~entry_type(); // delete the old value, if any
+    }
+  }
 
-     bool have_empty() const {
-    	 return true;
-     }
+  void fill_range_with_empty(entry_type * table_start, entry_type * table_end) {
+    {
+      char * start = (char*) table_start;
+      char * end = (char*) table_end;
 
-     const entry_type& emptyval() const {
-    	 throw std::invalid_argument("This function is 'deprecated' ;-)");
-     }
+      // The hypothesis is that memset is faster just setting the keys
+      // For huge values, this wouldn't be the case
+      // However, having 'clean' values helps find bugs faster anyway
+      memset(start, 0, end - start);
+    }
+
+    entry_type * p = table_start;
+    while (p != table_end) {
+      set_if_not_zeroes<Key, EmptyKeyValue>(p->first);
+      p++;
+    }
+    // std::uninitialized_fill(table_start, table_end, entry_type(EmptyKeyValue, data_type()));
+  }
+
+  void swap(ConstantStrategy& b) {
+  }
+
+  bool have_empty() const {
+    return true;
+  }
+
+  // Ick... entry vs key
+  const entry_type& emptyval() const {
+    throw std::invalid_argument("This function is 'deprecated' ;-)");
+  }
 };
 
 
@@ -512,18 +552,10 @@ class dense_hashtable {
   int num_table_copies() const { return settings.num_ht_copies(); }
 
  private:
-  // Annoyingly, we can't copy values around, because they might have
-  // const components (they're probably pair<const X, Y>).  We use
-  // explicit destructor invocation and placement new to get around
-  // this.  Arg.
-  void set_value(pointer dst, const_reference src) {
-    dst->~value_type();   // delete the old value, if any
-    new(dst) value_type(src);
-  }
-
   void destroy_buckets(size_type first, size_type last) {
-    for ( ; first != last; ++first)
-      table[first].~value_type();
+    for ( ; first != last; ++first) {
+      strategy.destroy_bucket(&table[first]);
+    }
   }
 
   // DELETE HELPER FUNCTIONS
@@ -803,7 +835,7 @@ class dense_hashtable {
         assert(num_probes < bucket_count()
                && "Hashtable is full: an error in key_equal<> or hash<>");
       }
-      set_value(&table[bucknum], *it);       // copies the value to here
+      strategy.set_value(&table[bucknum], *it);       // copies the value to here
       num_elements++;
     }
     settings.inc_num_ht_copies();
@@ -1077,7 +1109,7 @@ class dense_hashtable {
     } else {
       ++num_elements;               // replacing an empty bucket
     }
-    set_value(&table[pos], obj);
+    strategy.set_value(&table[pos], obj);
     return iterator(this, table + pos, table + num_buckets, false);
   }
 
