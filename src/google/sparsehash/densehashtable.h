@@ -363,13 +363,20 @@ private:
      bool have_empty_;
 };
 
-template <class T, T SetValue>
-void set_if_not_zeroes(const T& dest) {
-  const_cast<T&>(dest) = SetValue;
+template <class T>
+void assign_to_const(const T& dest, const T& value) {
+  const_cast<T&>(dest) = value;
 }
 
-template <>
-void set_if_not_zeroes<int, 0>(const int& dest) {}
+template <class T, T Value>
+bool memory_representation_is_zero() {
+  return false;
+}
+
+template < >
+bool memory_representation_is_zero<int, 0>() {
+  return true;
+}
 
 template <class Entry, class Key, class ExtractKey, class EqualKey, Key EmptyKeyValue>
 class ConstantStrategy : public EqualKey, public ExtractKey {
@@ -435,10 +442,12 @@ public:
       memset(start, 0, end - start);
     }
 
-    entry_type * p = table_start;
-    while (p != table_end) {
-      set_if_not_zeroes<Key, EmptyKeyValue>(p->first);
-      p++;
+    if (!memory_representation_is_zero<Key, EmptyKeyValue>()) {
+      entry_type * p = table_start;
+      while (p != table_end) {
+        assign_to_const(p->first, EmptyKeyValue);
+        p++;
+      }
     }
     // std::uninitialized_fill(table_start, table_end, entry_type(EmptyKeyValue, data_type()));
   }
