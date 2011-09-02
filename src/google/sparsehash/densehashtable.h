@@ -296,7 +296,7 @@ public:
       }
 
     LegacyStrategy(const LegacyStrategy& v)
-        : EqualKey(v), ExtractKey(v), empty_(v.empty_) { }
+        : EqualKey(v), ExtractKey(v), empty_(v.empty_), have_empty_(v.have_empty_) { }
 
 	void set_empty_key(const entry_type& val) {
 	    // Once you set the empty key, you can't change it
