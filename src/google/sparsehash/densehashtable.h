@@ -1027,6 +1027,9 @@ class dense_hashtable {
   // if object is not found; 2nd is ILLEGAL_BUCKET if it is.
   // Note: because of deletions where-to-insert is not trivial: it's the
   // first deleted bucket we see, as long as we don't find the key later
+
+  // NOTE: it looks like this function could better return a pair<size_type, bool>
+
   std::pair<size_type, size_type> find_position(const key_type &key) const {
     size_type num_probes = 0;              // how many times we've probed
     const size_type bucket_count_minus_one = bucket_count() - 1;
