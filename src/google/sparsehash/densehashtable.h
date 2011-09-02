@@ -369,13 +369,20 @@ inline void assign_to_const(const T& dest, const T& value) {
   const_cast<T&>(dest) = value;
 }
 
+
+#if __GXX_EXPERIMENTAL_CXX0X__
+#define CONST_EXPR constexpr
+#else
+#define CONST_EXPR
+#endif
+
 template <class T, class U, U Value>
-inline constexpr bool memory_representation_is_zero() {
+inline CONST_EXPR bool memory_representation_is_zero() {
   return false;
 }
 
 template < >
-inline constexpr bool memory_representation_is_zero<int, int, 0>() {
+inline CONST_EXPR bool memory_representation_is_zero<int, int, 0>() {
   return true;
 }
 
