@@ -447,7 +447,7 @@ public:
     // For huge values, this wouldn't be the case
     // However, having 'clean' values helps find bugs faster anyway
 
-    if (memory_representation_is_zero(emptykey())) {
+    if (memory_representation_is_zero<key_type, KeyParamT, EmptyKeyValue>()) {
       // Seems to be faster than an item-by-item loop
       memset(start, 0, end - start);
     }
