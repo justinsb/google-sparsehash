@@ -368,17 +368,17 @@ inline void assign_to_const(const T& dest, const T& value) {
   const_cast<T&>(dest) = value;
 }
 
-template <class T, T Value>
+template <class T, class U, U Value>
 inline bool memory_representation_is_zero() {
   return false;
 }
 
 template < >
-inline bool memory_representation_is_zero<int, 0>() {
+inline bool memory_representation_is_zero<int, int, 0>() {
   return true;
 }
 
-template <class Entry, class Key, class ExtractKey, class EqualKey, Key EmptyKeyValue>
+template <class Entry, class Key, class ExtractKey, class EqualKey, class KeyParamT, KeyParamT EmptyKeyValue>
 class ConstantStrategy : public EqualKey, public ExtractKey {
 public:
   typedef Key key_type;
@@ -407,11 +407,11 @@ public:
   }
 
   bool is_empty(const entry_type& entry) const {
-    return EqualKey::operator()(get_key(entry), EmptyKeyValue);
+    return EqualKey::operator()(get_key(entry), emptykey());
   }
 
   bool is_empty_key(const key_type& key) const {
-    return EqualKey::operator()(key, EmptyKeyValue);
+    return EqualKey::operator()(key, emptykey());
   }
 
   // Annoyingly, we can't copy values around, because they might have
@@ -419,14 +419,14 @@ public:
   // explicit destructor invocation and placement new to get around
   // this.  Arg.
   void set_value(entry_type * dst, const entry_type& src) {
-    if (dst->first != EmptyKeyValue) {
+    if (!EqualKey::operator()(dst->first, emptykey())) {
       dst->~entry_type(); // delete the old value, if any
     }
     new(dst) entry_type(src);
   }
 
   void destroy_bucket(entry_type * dst) {
-    if (dst->first != EmptyKeyValue) {
+    if (!EqualKey::operator()(dst->first, emptykey())) {
       dst->~entry_type(); // delete the old value, if any
     }
   }
@@ -442,10 +442,10 @@ public:
       memset(start, 0, end - start);
     }
 
-    if (!memory_representation_is_zero<Key, EmptyKeyValue>()) {
+    if (!memory_representation_is_zero<Key, KeyParamT, EmptyKeyValue>()) {
       entry_type * p = table_start;
       while (p != table_end) {
-        assign_to_const(p->first, EmptyKeyValue);
+        assign_to_const(p->first, emptykey());
         p++;
       }
     }
@@ -462,6 +462,10 @@ public:
   // Ick... entry vs key
   const entry_type& emptyval() const {
     throw std::invalid_argument("This function is 'deprecated' ;-)");
+  }
+
+  key_type emptykey() const {
+    return key_type(EmptyKeyValue);
   }
 };
 
