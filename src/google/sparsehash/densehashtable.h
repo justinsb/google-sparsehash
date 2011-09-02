@@ -364,17 +364,17 @@ private:
 };
 
 template <class T>
-void assign_to_const(const T& dest, const T& value) {
+inline void assign_to_const(const T& dest, const T& value) {
   const_cast<T&>(dest) = value;
 }
 
 template <class T, T Value>
-bool memory_representation_is_zero() {
+inline bool memory_representation_is_zero() {
   return false;
 }
 
 template < >
-bool memory_representation_is_zero<int, 0>() {
+inline bool memory_representation_is_zero<int, 0>() {
   return true;
 }
 
