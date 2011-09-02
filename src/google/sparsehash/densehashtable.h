@@ -376,18 +376,8 @@ inline void assign_to_const(const T& dest, const T& value) {
 #define CONST_EXPR
 #endif
 
-template <class T, class U, U Value>
-inline CONST_EXPR bool memory_representation_is_zero() {
-  return false;
-}
-
-template < >
-inline CONST_EXPR bool memory_representation_is_zero<int, int, 0>() {
-  return true;
-}
-
-template <class Entry, class Key, class ExtractKey, class EqualKey, class KeyParamT, KeyParamT EmptyKeyValue>
-class ConstantStrategy : public EqualKey, public ExtractKey {
+template <class Entry, class Key, class ExtractKey, class EqualKey, class SpecialKeys>
+class ConstantStrategy : public EqualKey, public ExtractKey, public SpecialKeys {
 public:
   typedef Key key_type;
   typedef Entry entry_type;
@@ -447,7 +437,7 @@ public:
     // For huge values, this wouldn't be the case
     // However, having 'clean' values helps find bugs faster anyway
 
-    if (memory_representation_is_zero<key_type, KeyParamT, EmptyKeyValue>()) {
+    if (SpecialKeys::emptykey_is_zero()) {
       // Seems to be faster than an item-by-item loop
       memset(start, 0, end - start);
     }
@@ -477,7 +467,7 @@ public:
   }
 
   key_type emptykey() const {
-    return key_type(EmptyKeyValue);
+    return SpecialKeys::emptykey();
   }
 };
 

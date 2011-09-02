@@ -340,6 +340,21 @@ class dense_hash_map {
   bool read_nopointer_data(INPUT *fp)   { return rep.read_nopointer_data(fp); }
 };
 
+// Helper template to make the syntax a little bit less painful
+template<class SpecialKeys, class T>
+struct maps {
+public:
+  typedef typename SpecialKeys::key_type key_type;
+
+  typedef dense_hash_map<key_type, T,
+		  std::hash<key_type>,
+		  std::equal_to<key_type>,
+		  libc_allocator_with_realloc<std::pair<const key_type, T> >,
+		  ConstantStrategy<std::pair<const key_type, T>, key_type,
+		      SelectFirstFromPair<key_type, T> , std::equal_to<key_type>,
+		      SpecialKeys> > map_t;
+};
+
 // We need a global swap as well
 template <class Key, class T, class HashFcn, class EqualKey, class Alloc, class Strategy>
 inline void swap(dense_hash_map<Key, T, HashFcn, EqualKey, Alloc, Strategy>& hm1,
