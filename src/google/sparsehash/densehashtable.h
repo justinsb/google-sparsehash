@@ -370,12 +370,12 @@ inline void assign_to_const(const T& dest, const T& value) {
 }
 
 template <class T, class U, U Value>
-inline bool memory_representation_is_zero() {
+inline constexpr bool memory_representation_is_zero() {
   return false;
 }
 
 template < >
-inline bool memory_representation_is_zero<int, int, 0>() {
+inline constexpr bool memory_representation_is_zero<int, int, 0>() {
   return true;
 }
 
