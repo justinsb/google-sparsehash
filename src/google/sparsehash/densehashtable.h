@@ -432,17 +432,21 @@ public:
   }
 
   void fill_range_with_empty(entry_type * table_start, entry_type * table_end) {
-    {
-      char * start = (char*) table_start;
-      char * end = (char*) table_end;
+    char * start = (char*) table_start;
+    char * end = (char*) table_end;
 
-      // The hypothesis is that memset is faster just setting the keys
-      // For huge values, this wouldn't be the case
-      // However, having 'clean' values helps find bugs faster anyway
+    // The hypothesis is that memset is faster just setting the keys
+    // For huge values, this wouldn't be the case
+    // However, having 'clean' values helps find bugs faster anyway
+
+    if (memory_representation_is_zero(emptykey())) {
+      // Seems to be faster than an item-by-item loop
       memset(start, 0, end - start);
     }
+    else {
+      // Just for sanity
+      memset(start, 0, end - start);
 
-    if (!memory_representation_is_zero<Key, KeyParamT, EmptyKeyValue>()) {
       entry_type * p = table_start;
       while (p != table_end) {
         assign_to_const(p->first, emptykey());
