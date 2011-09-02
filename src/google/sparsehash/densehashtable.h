@@ -1022,15 +1022,12 @@ class dense_hashtable {
 
   // LOOKUP ROUTINES
  private:
-  // Returns a pair of positions: 1st where the object is, 2nd where
-  // it would go if you wanted to insert it.  1st is ILLEGAL_BUCKET
-  // if object is not found; 2nd is ILLEGAL_BUCKET if it is.
+  // Returns a bool indicating whether the object was found, and a position.
+  // If found, position is where the object is
+  // If not found, where it would go if you wanted to insert i
   // Note: because of deletions where-to-insert is not trivial: it's the
   // first deleted bucket we see, as long as we don't find the key later
-
-  // NOTE: it looks like this function could better return a pair<size_type, bool>
-
-  std::pair<size_type, size_type> find_position(const key_type &key) const {
+  std::pair<bool, size_type> find_position(const key_type &key) const {
     size_type num_probes = 0;              // how many times we've probed
     const size_type bucket_count_minus_one = bucket_count() - 1;
     size_type bucknum = hash(key) & bucket_count_minus_one;
@@ -1038,16 +1035,16 @@ class dense_hashtable {
     while ( 1 ) {                          // probe until something happens
       if ( test_empty(bucknum) ) {         // bucket is empty
         if ( insert_pos == ILLEGAL_BUCKET )   // found no prior place to insert
-          return std::pair<size_type,size_type>(ILLEGAL_BUCKET, bucknum);
+          return std::pair<bool,size_type>(false, bucknum);
         else
-          return std::pair<size_type,size_type>(ILLEGAL_BUCKET, insert_pos);
+          return std::pair<bool,size_type>(false, insert_pos);
 
       } else if ( test_deleted(bucknum) ) {// keep searching, but mark to insert
         if ( insert_pos == ILLEGAL_BUCKET )
           insert_pos = bucknum;
 
       } else if ( equals(key, get_key(table[bucknum])) ) {
-        return std::pair<size_type,size_type>(bucknum, ILLEGAL_BUCKET);
+        return std::pair<bool,size_type>(true, bucknum);
       }
       ++num_probes;                        // we're doing another probe
       bucknum = (bucknum + JUMP_(key, num_probes)) & bucket_count_minus_one;
@@ -1060,33 +1057,33 @@ class dense_hashtable {
 
   iterator find(const key_type& key) {
     if ( size() == 0 ) return end();
-    std::pair<size_type, size_type> pos = find_position(key);
-    if ( pos.first == ILLEGAL_BUCKET )     // alas, not there
+    std::pair<bool, size_type> pos = find_position(key);
+    if ( !pos.first )     // alas, not there
       return end();
     else
-      return iterator(this, table + pos.first, table + num_buckets, false);
+      return iterator(this, table + pos.second, table + num_buckets, false);
   }
 
   const_iterator find(const key_type& key) const {
     if ( size() == 0 ) return end();
-    std::pair<size_type, size_type> pos = find_position(key);
-    if ( pos.first == ILLEGAL_BUCKET )     // alas, not there
+    std::pair<bool, size_type> pos = find_position(key);
+    if ( !pos.first )     // alas, not there
       return end();
     else
-      return const_iterator(this, table + pos.first, table+num_buckets, false);
+      return const_iterator(this, table + pos.second, table+num_buckets, false);
   }
 
   // This is a tr1 method: the bucket a given key is in, or what bucket
   // it would be put in, if it were to be inserted.  Shrug.
   size_type bucket(const key_type& key) const {
-    std::pair<size_type, size_type> pos = find_position(key);
-    return pos.first == ILLEGAL_BUCKET ? pos.second : pos.first;
+    std::pair<bool, size_type> pos = find_position(key);
+    return pos.second;
   }
 
   // Counts how many elements have key key.  For maps, it's either 0 or 1.
   size_type count(const key_type &key) const {
-    std::pair<size_type, size_type> pos = find_position(key);
-    return pos.first == ILLEGAL_BUCKET ? 0 : 1;
+    std::pair<bool, size_type> pos = find_position(key);
+    return pos.first ? 1 : 0;
   }
 
   // Likewise, equal_range doesn't really make sense for us.  Oh well.
@@ -1138,9 +1135,9 @@ class dense_hashtable {
            && "Inserting the empty key");
     assert((!settings.use_deleted() || !equals(get_key(obj), key_info.delkey))
            && "Inserting the deleted key");
-    const std::pair<size_type,size_type> pos = find_position(get_key(obj));
-    if ( pos.first != ILLEGAL_BUCKET) {      // object was already there
-      return std::pair<iterator,bool>(iterator(this, table + pos.first,
+    const std::pair<bool,size_type> pos = find_position(get_key(obj));
+    if ( pos.first ) {      // object was already there
+      return std::pair<iterator,bool>(iterator(this, table + pos.second,
                                           table + num_buckets, false),
                                  false);          // false: we didn't insert
     } else {                                 // pos.second says where to put it
@@ -1193,10 +1190,10 @@ class dense_hashtable {
            && "Inserting the empty key");
     assert((!settings.use_deleted() || !equals(key, key_info.delkey))
            && "Inserting the deleted key");
-    const std::pair<size_type,size_type> pos = find_position(key);
+    const std::pair<bool,size_type> pos = find_position(key);
     DefaultValue default_value;
-    if ( pos.first != ILLEGAL_BUCKET) {  // object was already there
-      return table[pos.first];
+    if (pos.first) {  // object was already there
+      return table[pos.second];
     } else if (resize_delta(1)) {        // needed to rehash to make room
       // Since we resized, we can't use pos, so recalculate where to insert.
       return *insert_noresize(default_value(key)).first;
