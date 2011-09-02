@@ -92,6 +92,7 @@
 #include <google/sparsehash/sparseconfig.h>
 #include <assert.h>
 #include <stdio.h>              // for FILE, fwrite, fread
+#include <string.h>             // for memset
 #include <algorithm>            // For swap(), eg
 #include <iterator>             // For iterator tags
 #include <limits>               // for numeric_limits
