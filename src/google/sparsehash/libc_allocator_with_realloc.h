@@ -50,6 +50,7 @@ class libc_allocator_with_realloc {
   typedef const T* const_pointer;
   typedef T& reference;
   typedef const T& const_reference;
+  typedef T&& move_reference;
 
   libc_allocator_with_realloc() {}
   libc_allocator_with_realloc(const libc_allocator_with_realloc&) {}

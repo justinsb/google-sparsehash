@@ -285,6 +285,9 @@ class dense_hash_map {
   std::pair<iterator, bool> insert(const value_type& obj) {
     return rep.insert(obj);
   }
+  std::pair<iterator, bool> insert(value_type&& obj) {
+    return rep.insert(move(obj));
+  }
   template <class InputIterator> void insert(InputIterator f, InputIterator l) {
     rep.insert(f, l);
   }

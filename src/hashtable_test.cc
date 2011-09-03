@@ -210,6 +210,7 @@ struct Alloc {
   typedef const T* const_pointer;
   typedef T& reference;
   typedef const T& const_reference;
+  typedef T&& move_reference;
 
   explicit Alloc(int i=0, int* count=NULL) : id_(i), count_(count) {}
   ~Alloc() {}

@@ -355,6 +355,11 @@ public:
        new(dst) entry_type(src);
      }
 
+     void move_value(entry_type* dst, entry_type&& src) {
+       dst->~entry_type();   // delete the old value, if any
+       new(dst) entry_type(std::move(src));
+     }
+
      void destroy_bucket(entry_type * dst) {
     	 dst->~entry_type();
      }
@@ -390,6 +395,11 @@ private:
     return ExtractKey::operator()(v);
   }
 
+    // We want to return the exact same type as ExtractKey: Key or const Key&
+    typename ExtractKey::result_type get_key(const entry_type& v) const {
+      return ExtractKey::operator()(v);
+    }
+
 public:
   explicit ConstantStrategy(const EqualKey& eql = EqualKey(),
       const ExtractKey& ext = ExtractKey())
@@ -416,6 +426,13 @@ public:
   // const components (they're probably pair<const X, Y>).  We use
   // explicit destructor invocation and placement new to get around
   // this.  Arg.
+  void move_value(entry_type * dst, entry_type&& src) {
+    if (!EqualKey::operator()(dst->first, emptykey())) {
+      dst->~entry_type(); // delete the old value, if any
+    }
+    new(dst) entry_type(std::move(src));
+  }
+
   void set_value(entry_type * dst, const entry_type& src) {
     if (!EqualKey::operator()(dst->first, emptykey())) {
       dst->~entry_type(); // delete the old value, if any
@@ -490,6 +507,7 @@ class dense_hashtable {
   typedef typename value_alloc_type::difference_type difference_type;
   typedef typename value_alloc_type::reference reference;
   typedef typename value_alloc_type::const_reference const_reference;
+  typedef typename value_alloc_type::move_reference move_reference;
   typedef typename value_alloc_type::pointer pointer;
   typedef typename value_alloc_type::const_pointer const_pointer;
   typedef dense_hashtable_iterator<Value, Key, HashFcn,
@@ -761,7 +779,7 @@ class dense_hashtable {
              num_remain < sz * shrink_factor) {
         sz /= 2;                            // stay a power of 2
       }
-      dense_hashtable tmp(*this, sz);       // Do the actual resizing
+      dense_hashtable tmp(std::move(*this), sz);       // Do the actual resizing
       swap(tmp);                            // now we are tmp
       retval = true;
     }
@@ -815,7 +833,7 @@ class dense_hashtable {
         resize_to *= 2;
       }
     }
-    dense_hashtable tmp(*this, resize_to);
+    dense_hashtable tmp(std::move(*this), resize_to);
     swap(tmp);                             // now we are tmp
     return true;
   }
@@ -854,6 +872,39 @@ class dense_hashtable {
       num_elements++;
     }
     settings.inc_num_ht_copies();
+  }
+
+  // Used to actually do the rehashing when we grow/shrink a hashtable
+  void move_from(dense_hashtable&& ht, size_type min_buckets_wanted) {
+    clear_to_size(settings.min_buckets(ht.size(), min_buckets_wanted));
+
+    // We use a normal iterator to get non-deleted bcks from ht
+    // We could use insert() here, but since we know there are
+    // no duplicates and no deleted items, we can be more efficient
+    assert((bucket_count() & (bucket_count()-1)) == 0);      // a power of two
+    for ( iterator it = ht.begin(); it != ht.end(); ++it ) {
+      size_type num_probes = 0;              // how many times we've probed
+      size_type bucknum;
+      const size_type bucket_count_minus_one = bucket_count() - 1;
+      for (bucknum = hash(get_key(*it)) & bucket_count_minus_one;
+           !test_empty(bucknum);                               // not empty
+           bucknum = (bucknum + JUMP_(key, num_probes)) & bucket_count_minus_one) {
+        ++num_probes;
+        assert(num_probes < bucket_count()
+               && "Hashtable is full: an error in key_equal<> or hash<>");
+      }
+      strategy.move_value(&table[bucknum], std::move(*it));       // moves the value to here
+      num_elements++;
+    }
+    settings.inc_num_ht_copies();
+
+    if (ht.table) {
+      // We don't call destroy buckets - we should have moved them all
+      //destroy_buckets(0, num_buckets);
+      val_info.deallocate(ht.table, ht.num_buckets);
+      ht.table = 0;
+      ht.num_buckets = 0;
+    }
   }
 
   // Required by the spec for hashed associative container
@@ -932,6 +983,30 @@ class dense_hashtable {
     settings.reset_thresholds(bucket_count());
     copy_from(ht, min_buckets_wanted);   // copy_from() ignores deleted entries
   }
+
+  // As a convenience for resize(), we allow an optional second argument
+  // which lets you make this new hashtable a different size than ht
+  dense_hashtable(dense_hashtable&& ht,
+                  size_type min_buckets_wanted = HT_DEFAULT_STARTING_BUCKETS)
+      : settings(ht.settings),
+        key_info(ht.key_info),
+        num_deleted(0),
+        num_elements(0),
+        num_buckets(0),
+        val_info(ht.val_info),
+        strategy(ht.strategy),
+        table(NULL) {
+    if (!ht.strategy.have_empty()) {
+      // If empty key isn't set, copy_from will crash, so we do our own copying.
+      assert(ht.empty());
+      num_buckets = settings.min_buckets(ht.size(), min_buckets_wanted);
+      settings.reset_thresholds(bucket_count());
+      return;
+    }
+    settings.reset_thresholds(bucket_count());
+    move_from(std::move(ht), min_buckets_wanted);   // copy_from() ignores deleted entries
+  }
+
 
   dense_hashtable& operator= (const dense_hashtable& ht) {
     if (&ht == this)  return *this;        // don't copy onto ourselves
@@ -1110,7 +1185,24 @@ class dense_hashtable {
 
   // INSERTION ROUTINES
  private:
+  // TODO: How do we avoid doubling all methods???
   // Private method used by insert_noresize and find_or_insert.
+  iterator insert_at(move_reference obj, size_type pos) {
+    if (size() >= max_size()) {
+      throw std::length_error("insert overflow");
+    }
+    if ( test_deleted(pos) ) {      // just replace if it's been del.
+      // shrug: shouldn't need to be const.
+      const_iterator delpos(this, table + pos, table + num_buckets, false);
+      clear_deleted(delpos);
+      assert( num_deleted > 0);
+      --num_deleted;                // used to be, now it isn't
+    } else {
+      ++num_elements;               // replacing an empty bucket
+    }
+    strategy.move_value(&table[pos], std::move(obj));
+    return iterator(this, table + pos, table + num_buckets, false);
+  }
   iterator insert_at(const_reference obj, size_type pos) {
     if (size() >= max_size()) {
       throw std::length_error("insert overflow");
@@ -1129,6 +1221,21 @@ class dense_hashtable {
   }
 
   // If you know *this is big enough to hold obj, use this routine
+  std::pair<iterator, bool> insert_noresize(move_reference obj) {
+    // First, double-check we're not inserting delkey or emptyval
+    assert((!strategy.is_empty(obj))
+           && "Inserting the empty key");
+    assert((!settings.use_deleted() || !equals(get_key(obj), key_info.delkey))
+           && "Inserting the deleted key");
+    const std::pair<bool,size_type> pos = find_position(get_key(obj));
+    if ( pos.first ) {      // object was already there
+      return std::pair<iterator,bool>(iterator(this, table + pos.second,
+                                          table + num_buckets, false),
+                                 false);          // false: we didn't insert
+    } else {                                 // pos.second says where to put it
+      return std::pair<iterator,bool>(insert_at(std::move(obj), pos.second), true);
+    }
+  }
   std::pair<iterator, bool> insert_noresize(const_reference obj) {
     // First, double-check we're not inserting delkey or emptyval
     assert((!strategy.is_empty(obj))
@@ -1172,6 +1279,10 @@ class dense_hashtable {
     resize_delta(1);                      // adding an object, grow if need be
     return insert_noresize(obj);
   }
+  std::pair<iterator, bool> insert(move_reference obj) {
+    resize_delta(1);                      // adding an object, grow if need be
+    return insert_noresize(move(obj));
+  }
 
   // When inserting a lot at a time, we specialize on the type of iterator
   template <class InputIterator>
@@ -1201,7 +1312,6 @@ class dense_hashtable {
       return *insert_at(default_value(key), pos.second);
     }
   }
-
 
   // DELETION ROUTINES
   size_type erase(const key_type& key) {
