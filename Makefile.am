@@ -15,6 +15,7 @@ googleincludedir = $(includedir)/google
 ## The .h files you want to install (that is, .h files that people
 ## who install this package can include in their own applications.)
 googleinclude_HEADERS =				\
+   src/google/maps                \
    src/google/dense_hash_map			\
    src/google/dense_hash_set			\
    src/google/sparse_hash_map			\

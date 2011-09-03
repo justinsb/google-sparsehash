@@ -1,0 +1,30 @@
+#ifndef _GOOGLE_MAPS_H
+#define _GOOGLE_MAPS_H
+
+#include <google/dense_hash_map>
+#include <unordered_map>
+#include <map>
+
+namespace google {
+
+// Helper template to make the templates a little bit less painful
+template<class SpecialKeys, class T>
+struct maps {
+public:
+  typedef typename SpecialKeys::key_type key_type;
+
+  typedef google::dense_hash_map<key_type, T,
+      std::hash<key_type>,
+      std::equal_to<key_type>,
+      libc_allocator_with_realloc<std::pair<const key_type, T> >,
+      ConstantStrategy<std::pair<const key_type, T>, key_type,
+          SelectFirstFromPair<key_type, T> , std::equal_to<key_type>,
+          SpecialKeys> > dense_hash_map_t;
+  
+  typedef std::unordered_map<key_type, T> unordered_map_t;
+  typedef std::map<key_type, T> ordered_map_t;
+};
+
+}
+
+#endif
